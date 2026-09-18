@@ -1,0 +1,22 @@
+{
+  "name": "castpipe",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Castpipe - Local subnet developer utility for code drops and fast file streaming",
+  "scripts": {
+    "dev:peer1": "go run . -name Dev-Alpha",
+    "dev:peer2": "go run . -name Dev-Beta",
+    "dev": "wails dev",
+    "build": "wails build",
+    "test": "go test -v ./backend"
+  },
+  "keywords": [
+    "wails",
+    "developer-tools",
+    "p2p",
+    "airdrop",
+    "file-transfer"
+  ],
+  "author": "Mohammad Mahdi Momeni <mahdimomeni012@gmail.com>",
+  "license": "MIT"
+}

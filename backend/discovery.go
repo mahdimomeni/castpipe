@@ -311,43 +311,59 @@ func (d *DiscoveryService) scanLoop() {
 
 func (d *DiscoveryService) performScan() {
 	var discoveredPeers []Peer
+	var mu sync.Mutex
+	var scanWg sync.WaitGroup
 
-	// 1. Scan mDNS if server active
-	if d.mdnsServer != nil {
-		entriesCh := make(chan *mdns.ServiceEntry, 64)
-
-		params := mdns.DefaultParams(MdnsServiceType)
-		params.Domain = MdnsDomain
-		params.Timeout = 1200 * time.Millisecond
-		params.DisableIPv6 = true
-		params.Entries = entriesCh
-
-		var collectWg sync.WaitGroup
-		collectWg.Add(1)
-
+	// 1. Scan and heartbeat local inter-process provider
+	if d.localProvider != nil {
+		scanWg.Add(1)
 		go func() {
-			defer collectWg.Done()
-			for entry := range entriesCh {
-				peer := parseServiceEntry(entry)
-				if peer.IP != "" && peer.Port > 0 {
-					discoveredPeers = append(discoveredPeers, peer)
-				}
+			defer scanWg.Done()
+			_ = d.localProvider.Heartbeat()
+			localPeers, err := d.localProvider.Scan(d.peerTTL)
+			if err == nil && len(localPeers) > 0 {
+				mu.Lock()
+				discoveredPeers = append(discoveredPeers, localPeers...)
+				mu.Unlock()
 			}
 		}()
-
-		_ = mdns.QueryContext(d.ctx, params)
-		close(entriesCh)
-		collectWg.Wait()
 	}
 
-	// 2. Scan and heartbeat local inter-process provider
-	if d.localProvider != nil {
-		_ = d.localProvider.Heartbeat()
-		localPeers, err := d.localProvider.Scan(d.peerTTL)
-		if err == nil && len(localPeers) > 0 {
-			discoveredPeers = append(discoveredPeers, localPeers...)
-		}
+	// 2. Scan mDNS concurrently if server active
+	if d.mdnsServer != nil {
+		scanWg.Add(1)
+		go func() {
+			defer scanWg.Done()
+			entriesCh := make(chan *mdns.ServiceEntry, 64)
+
+			params := mdns.DefaultParams(MdnsServiceType)
+			params.Domain = MdnsDomain
+			params.Timeout = 1200 * time.Millisecond
+			params.DisableIPv6 = true
+			params.Entries = entriesCh
+
+			var collectWg sync.WaitGroup
+			collectWg.Add(1)
+
+			go func() {
+				defer collectWg.Done()
+				for entry := range entriesCh {
+					peer := parseServiceEntry(entry)
+					if peer.IP != "" && peer.Port > 0 {
+						mu.Lock()
+						discoveredPeers = append(discoveredPeers, peer)
+						mu.Unlock()
+					}
+				}
+			}()
+
+			_ = mdns.QueryContext(d.ctx, params)
+			close(entriesCh)
+			collectWg.Wait()
+		}()
 	}
+
+	scanWg.Wait()
 
 	changed := false
 

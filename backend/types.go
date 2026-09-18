@@ -1,6 +1,5 @@
 package backend
 
-import "time"
 
 // Peer represents a discovered node in the local subnet.
 type Peer struct {
@@ -8,8 +7,8 @@ type Peer struct {
 	Hostname string    `json:"hostname"`
 	IP       string    `json:"ip"`
 	Port     int       `json:"port"`
-	IsSelf   bool      `json:"isSelf"`
-	LastSeen time.Time `json:"lastSeen"`
+	IsSelf   bool   `json:"isSelf"`
+	LastSeen int64  `json:"lastSeen"`
 }
 
 // DropType defines the category of dropped content.

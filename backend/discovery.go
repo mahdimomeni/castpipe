@@ -41,13 +41,13 @@ func (r *PeerRegistry) Upsert(peer Peer) bool {
 	key := peerKey(peer)
 	existing, exists := r.peers[key]
 	if !exists {
-		peer.LastSeen = time.Now()
+		peer.LastSeen = time.Now().UnixMilli()
 		r.peers[key] = peer
 		return true
 	}
 
 	// Update existing record
-	existing.LastSeen = time.Now()
+	existing.LastSeen = time.Now().UnixMilli()
 	existing.IP = peer.IP
 	existing.Port = peer.Port
 	existing.Hostname = peer.Hostname
@@ -62,14 +62,15 @@ func (r *PeerRegistry) Prune(ttl time.Duration) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	now := time.Now()
+	now := time.Now().UnixMilli()
+	ttlMs := ttl.Milliseconds()
 	changed := false
 
 	for key, peer := range r.peers {
 		if peer.IsSelf {
 			continue
 		}
-		if now.Sub(peer.LastSeen) > ttl {
+		if now-peer.LastSeen > ttlMs {
 			delete(r.peers, key)
 			changed = true
 		}
@@ -166,7 +167,7 @@ func NewDiscoveryService(self Peer, onUpdate func([]Peer)) *DiscoveryService {
 		self.ID = uuid.NewString()
 	}
 	self.IsSelf = true
-	self.LastSeen = time.Now()
+	self.LastSeen = time.Now().UnixMilli()
 
 	registry := NewPeerRegistry()
 	registry.Upsert(self)
@@ -378,6 +379,6 @@ func parseServiceEntry(entry *mdns.ServiceEntry) Peer {
 		Hostname: hostname,
 		IP:       ip,
 		Port:     entry.Port,
-		LastSeen: time.Now(),
+		LastSeen: time.Now().UnixMilli(),
 	}
 }

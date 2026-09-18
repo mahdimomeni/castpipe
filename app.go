@@ -54,7 +54,7 @@ func (a *App) startup(ctx context.Context) {
 		IP:       server.IP(),
 		Port:     server.Port(),
 		IsSelf:   true,
-		LastSeen: time.Now(),
+		LastSeen: time.Now().UnixMilli(),
 	}
 	a.self = self
 

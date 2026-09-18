@@ -3,6 +3,7 @@
   import { appState } from './lib/state.svelte'
   import PeerSidebar from './lib/components/PeerSidebar.svelte'
   import Feed from './lib/components/Feed.svelte'
+  import ComposerDock from './lib/components/ComposerDock.svelte'
   import ToastContainer from './lib/components/ToastContainer.svelte'
   import { GetSelf, SendPaths } from '../wailsjs/go/main/App.js'
   import { EventsOn, OnFileDrop, OnFileDropOff } from '../wailsjs/runtime/runtime.js'
@@ -129,6 +130,9 @@
 
     <!-- Main Live Inbound Feed Viewport -->
     <Feed />
+
+    <!-- Bottom Composer Dock -->
+    <ComposerDock />
   </div>
 
   <!-- Toast Notification System -->

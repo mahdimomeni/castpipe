@@ -87,12 +87,12 @@ func TestPeerRegistryOperations(t *testing.T) {
 	// Manually set remote2 LastSeen to past
 	reg.mu.Lock()
 	p2 := reg.peers["peer-2"]
-	p2.LastSeen = time.Now().Add(-1 * time.Hour)
+	p2.LastSeen = time.Now().Add(-1 * time.Hour).UnixMilli()
 	reg.peers["peer-2"] = p2
 
 	// Also simulate self having old LastSeen
 	pSelf := reg.peers["self-123"]
-	pSelf.LastSeen = time.Now().Add(-1 * time.Hour)
+	pSelf.LastSeen = time.Now().Add(-1 * time.Hour).UnixMilli()
 	reg.peers["self-123"] = pSelf
 	reg.mu.Unlock()
 

@@ -4,7 +4,7 @@ export interface Peer {
   ip: string
   port: number
   isSelf: boolean
-  lastSeen?: string | Date
+  lastSeen?: number
 }
 
 export interface DropSnippetPayload {

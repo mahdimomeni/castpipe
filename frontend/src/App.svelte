@@ -1,79 +1,43 @@
 <script lang="ts">
-  import logo from './assets/images/logo-universal.png'
-  import {Greet} from '../wailsjs/go/main/App.js'
+  import { onMount } from 'svelte'
+  import { GetSelf, OpenDownloadsFolder } from '../wailsjs/go/main/App.js'
+  import type { backend } from '../wailsjs/go/models'
 
-  let resultText: string = "Please enter your name below 👇"
-  let name: string
+  let selfPeer = $state<backend.Peer | null>(null)
+  let statusText = $state<string>('Initializing Castpipe engine...')
 
-  function greet(): void {
-    Greet(name).then(result => resultText = result)
-  }
+  onMount(async () => {
+    try {
+      selfPeer = await GetSelf()
+      statusText = 'Castpipe engine online'
+    } catch (e) {
+      statusText = `Error: ${e}`
+    }
+  })
 </script>
 
-<main>
-  <img alt="Wails logo" id="logo" src="{logo}">
-  <div class="result" id="result">{resultText}</div>
-  <div class="input-box" id="input">
-    <input autocomplete="off" bind:value={name} class="input" id="name" type="text"/>
-    <button class="btn" on:click={greet}>Greet</button>
+<main class="flex h-screen w-screen flex-col bg-[#0b0f14] text-[#e6edf3] font-mono select-none">
+  <div class="flex items-center justify-between border-b border-[#30363d] bg-[#161b22] px-4 py-2 text-xs">
+    <div class="flex items-center space-x-2">
+      <span class="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+      <span class="font-bold tracking-wider text-emerald-400">CASTPIPE</span>
+      <span class="text-zinc-500">|</span>
+      <span class="text-zinc-400">{statusText}</span>
+    </div>
+    {#if selfPeer}
+      <div class="flex items-center space-x-3 text-zinc-400 text-[11px]">
+        <span>HOST: <strong class="text-white">{selfPeer.hostname}</strong></span>
+        <span>IP: <strong class="text-emerald-400">{selfPeer.ip}:{selfPeer.port}</strong></span>
+        <button
+          onclick={() => OpenDownloadsFolder()}
+          class="rounded bg-[#21262d] px-2 py-1 text-zinc-300 hover:bg-[#30363d] hover:text-white transition"
+        >
+          Open DevDrop
+        </button>
+      </div>
+    {/if}
+  </div>
+  <div class="flex flex-1 items-center justify-center p-8 text-zinc-500 text-sm">
+    Backend bridge connected. Preparing UI components...
   </div>
 </main>
-
-<style>
-
-  #logo {
-    display: block;
-    width: 50%;
-    height: 50%;
-    margin: auto;
-    padding: 10% 0 0;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-size: 100% 100%;
-    background-origin: content-box;
-  }
-
-  .result {
-    height: 20px;
-    line-height: 20px;
-    margin: 1.5rem auto;
-  }
-
-  .input-box .btn {
-    width: 60px;
-    height: 30px;
-    line-height: 30px;
-    border-radius: 3px;
-    border: none;
-    margin: 0 0 0 20px;
-    padding: 0 8px;
-    cursor: pointer;
-  }
-
-  .input-box .btn:hover {
-    background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%);
-    color: #333333;
-  }
-
-  .input-box .input {
-    border: none;
-    border-radius: 3px;
-    outline: none;
-    height: 30px;
-    line-height: 30px;
-    padding: 0 10px;
-    background-color: rgba(240, 240, 240, 1);
-    -webkit-font-smoothing: antialiased;
-  }
-
-  .input-box .input:hover {
-    border: none;
-    background-color: rgba(255, 255, 255, 1);
-  }
-
-  .input-box .input:focus {
-    border: none;
-    background-color: rgba(255, 255, 255, 1);
-  }
-
-</style>

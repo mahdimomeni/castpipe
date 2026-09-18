@@ -32,7 +32,7 @@ npm run dev:peer2
 
 Both instances will start immediately:
 - **Unique window titles**: Distinctly labeled as `Castpipe - Dev-Alpha` and `Castpipe - Dev-Beta` in the Windows taskbar and Alt+Tab.
-- **Isolated drop folders**: Files received by `Dev-Alpha` are saved to `~/Downloads/DevDrop-Dev-Alpha`, while `Dev-Beta` saves to `~/Downloads/DevDrop-Dev-Beta`.
+- **Isolated drop folders**: Files received by `Dev-Alpha` are saved to `~/Downloads/Castpipe-Dev-Alpha`, while `Dev-Beta` saves to `~/Downloads/Castpipe-Dev-Beta`.
 - **Automatic mutual discovery**: `Dev-Alpha` and `Dev-Beta` will instantly see each other in their Peer sidebars.
 
 ---
@@ -61,7 +61,7 @@ Every instance can be customized via command-line flags or environment variables
 | :--- | :--- | :--- | :--- | :--- |
 | `--name` | `-n` | `CASTPIPE_NAME` | Machine Hostname | Custom instance display name and window title |
 | `--port` | `-p` | `CASTPIPE_PORT` | `0` (Ephemeral) | Custom HTTP receiver port |
-| `--drop-dir` | `-d` | `CASTPIPE_DROP_DIR` | `~/Downloads/DevDrop[-<Name>]` | Destination directory for inbound drops |
+| `--drop-dir` | `-d` | `CASTPIPE_DROP_DIR` | `~/Downloads/Castpipe[-<Name>]` | Destination directory for inbound drops |
 
 ### Example with Custom Port and Download Directory:
 ```powershell
@@ -74,7 +74,7 @@ go run . -name "Worker-1" -port 9090 -drop-dir "./my-drops"
 
 1. **Ephemeral TCP Ports**: Each instance binds to an ephemeral TCP port (`:0` or specified via `-port`), eliminating `bind: address already in use` conflicts.
 2. **Dual Discovery Architecture**:
-   - **LAN Network Discovery**: Uses mDNS (`_devdrop._tcp.local`) for cross-device discovery on the physical Wi-Fi/Ethernet network.
+   - **LAN Network Discovery**: Uses mDNS (`_castpipe._tcp.local`) for cross-device discovery on the physical Wi-Fi/Ethernet network.
    - **Local Inter-Process Discovery**: Uses atomic heartbeat presence files in `os.TempDir()/castpipe_local_peers/` with loopback routing (`127.0.0.1`). This bypasses OS-level multicast loopback restrictions on Windows while enabling instant mutual discovery offline or on airplanes.
 3. **Automatic Cleanup & Stale Pruning**:
    - When an instance is closed, its presence file is immediately removed.

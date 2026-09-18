@@ -21,7 +21,7 @@
     try {
       await OpenDownloadsFolder()
     } catch (e: any) {
-      appState.addToast('error', 'Open DevDrop Failed', e?.toString() || 'Unknown error')
+      appState.addToast('error', 'Open Castpipe Failed', e?.toString() || 'Unknown error')
     }
   }
 
@@ -137,10 +137,10 @@
           <button
             onclick={handleOpenDownloads}
             class="flex items-center gap-1 rounded bg-[#21262d] hover:bg-[#30363d] text-zinc-300 hover:text-white px-2 py-0.5 text-[10px] transition border border-[#30363d] hover:border-zinc-500 shadow-sm"
-            title="Open DevDrop downloads folder"
+            title="Open Castpipe downloads folder"
           >
             <FolderDown class="h-3 w-3 text-emerald-400" />
-            <span>DevDrop</span>
+            <span>Castpipe</span>
           </button>
         </div>
       </div>
@@ -174,7 +174,7 @@
         </p>
         <div class="mt-3 flex items-center gap-1.5 text-[9px] text-zinc-500 bg-[#0b0f14] px-2 py-1 rounded border border-[#21262d]">
           <span class="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
-          <span>_devdrop._tcp.local</span>
+          <span>_castpipe._tcp.local</span>
         </div>
       </div>
     {:else}

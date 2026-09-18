@@ -58,7 +58,7 @@ export class AppState {
         this.addToast(
           'success',
           `File from ${item.sender}`,
-          `Saved to DevDrop: ${item.file?.fileName || 'file'}`
+          `Saved to Castpipe: ${item.file?.fileName || 'file'}`
         )
       }
     }

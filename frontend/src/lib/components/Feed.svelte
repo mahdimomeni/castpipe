@@ -18,7 +18,7 @@
       </p>
       <div class="mt-5 flex items-center space-x-2 text-[11px] text-zinc-500 bg-[#0b0f14] px-3 py-1.5 rounded-md border border-[#21262d]">
         <span class="h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span>
-        <span class="font-mono">Auto-accepting incoming drops to %USERPROFILE%\Downloads\DevDrop\</span>
+        <span class="font-mono">Auto-accepting incoming drops to %USERPROFILE%\Downloads\Castpipe\</span>
       </div>
     </div>
   {:else}

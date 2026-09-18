@@ -93,7 +93,7 @@
           <span class="font-semibold text-emerald-400">{formatBytes(fileSize)}</span>
           <span class="text-zinc-600">&bull;</span>
           <span class="text-[10px] text-zinc-500 truncate max-w-xs" title={filePath}>
-            Saved to DevDrop
+            Saved to Castpipe
           </span>
         </div>
       </div>

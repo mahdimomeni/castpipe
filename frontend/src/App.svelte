@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte'
   import { appState } from './lib/state.svelte'
   import PeerSidebar from './lib/components/PeerSidebar.svelte'
+  import Feed from './lib/components/Feed.svelte'
   import ToastContainer from './lib/components/ToastContainer.svelte'
   import { GetSelf, SendPaths } from '../wailsjs/go/main/App.js'
   import { EventsOn, OnFileDrop, OnFileDropOff } from '../wailsjs/runtime/runtime.js'
@@ -127,22 +128,7 @@
     </header>
 
     <!-- Main Live Inbound Feed Viewport -->
-    <section class="flex flex-1 flex-col items-center justify-center p-8 text-center" id="main-viewport">
-      <div class="max-w-md rounded-xl border border-dashed border-[#30363d] bg-[#161b22]/30 p-8">
-        <div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-950/30 border border-emerald-500/30 text-emerald-400">
-          <Terminal class="h-6 w-6" />
-        </div>
-        <h2 class="text-sm font-bold text-white">Peer Discovery & Sidebar Active</h2>
-        <p class="mt-2 text-xs text-zinc-400 leading-relaxed">
-          The Svelte 5 runes architecture is now wired to mDNS discovery events, peer selection, and per-card drag-and-drop file streaming.
-        </p>
-        <div class="mt-4 flex flex-wrap justify-center gap-2 text-[10px] text-zinc-400">
-          <span class="rounded bg-[#21262d] px-2 py-1 font-mono text-emerald-400">peers:updated</span>
-          <span class="rounded bg-[#21262d] px-2 py-1 font-mono text-cyan-400">drop:received</span>
-          <span class="rounded bg-[#21262d] px-2 py-1 font-mono text-purple-400">wails:file-drop</span>
-        </div>
-      </div>
-    </section>
+    <Feed />
   </div>
 
   <!-- Toast Notification System -->

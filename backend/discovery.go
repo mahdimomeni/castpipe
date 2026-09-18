@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	MdnsServiceType = "_devdrop._tcp"
+	MdnsServiceType = "_castpipe._tcp"
 	MdnsDomain      = "local"
 	DefaultScanTime = 4 * time.Second
 	DefaultPeerTTL  = 12 * time.Second

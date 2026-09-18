@@ -164,7 +164,7 @@ func TestPeerRegistryConcurrency(t *testing.T) {
 
 func TestParseServiceEntry(t *testing.T) {
 	entry := &mdns.ServiceEntry{
-		Name:   "castpipe-node1._devdrop._tcp.local.",
+		Name:   "castpipe-node1._castpipe._tcp.local.",
 		Host:   "Desktop-Test.",
 		AddrV4: net.ParseIP("192.168.1.88"),
 		Port:   42100,

@@ -77,10 +77,10 @@ func NewServerWithConfig(cfg ServerConfig) (*Server, error) {
 	downloadDir := strings.TrimSpace(cfg.DownloadDir)
 	if downloadDir == "" {
 		homeDir, err := os.UserHomeDir()
-		folderName := "DevDrop"
+		folderName := "Castpipe"
 		// If custom hostname provided, isolate download directory by default
 		if strings.TrimSpace(cfg.Hostname) != "" {
-			folderName = fmt.Sprintf("DevDrop-%s", strings.TrimSpace(cfg.Hostname))
+			folderName = fmt.Sprintf("Castpipe-%s", strings.TrimSpace(cfg.Hostname))
 		}
 		if err != nil {
 			downloadDir = filepath.Join(".", "Downloads", folderName)
@@ -163,7 +163,7 @@ func (s *Server) Hostname() string {
 	return s.hostname
 }
 
-// DownloadDir returns the DevDrop folder path.
+// DownloadDir returns the Castpipe folder path.
 func (s *Server) DownloadDir() string {
 	return s.downloadDir
 }
@@ -223,7 +223,7 @@ func (s *Server) handleDrop(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleUpload processes streaming file and directory zip drops into DevDrop folder.
+// handleUpload processes streaming file and directory zip drops into Castpipe folder.
 func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

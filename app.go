@@ -91,7 +91,7 @@ func (a *App) startup(ctx context.Context) {
 	a.isReady = true
 	a.mu.Unlock()
 
-	wailsRuntime.LogInfof(ctx, "Castpipe listening on %s:%d (DevDrop at %s)", self.IP, self.Port, server.DownloadDir())
+	wailsRuntime.LogInfof(ctx, "Castpipe listening on %s:%d (Castpipe at %s)", self.IP, self.Port, server.DownloadDir())
 }
 
 // shutdown cleans up active listeners and discovery announcers.
@@ -143,7 +143,7 @@ func (a *App) SendPaths(targetIP string, targetPort int, paths []string) error {
 	return backend.SendPaths(senderName, targetIP, targetPort, paths)
 }
 
-// OpenDownloadsFolder opens the DevDrop folder in Windows Explorer.
+// OpenDownloadsFolder opens the Castpipe folder in Windows Explorer.
 func (a *App) OpenDownloadsFolder() error {
 	a.mu.RLock()
 	downloadDir := ""

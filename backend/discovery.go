@@ -1,0 +1,383 @@
+package backend
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/hashicorp/mdns"
+)
+
+const (
+	MdnsServiceType = "_devdrop._tcp"
+	MdnsDomain      = "local"
+	DefaultScanTime = 4 * time.Second
+	DefaultPeerTTL  = 12 * time.Second
+)
+
+// PeerRegistry maintains a thread-safe map of known peers in the local network.
+type PeerRegistry struct {
+	mu    sync.RWMutex
+	peers map[string]Peer
+}
+
+// NewPeerRegistry initializes an empty peer registry.
+func NewPeerRegistry() *PeerRegistry {
+	return &PeerRegistry{
+		peers: make(map[string]Peer),
+	}
+}
+
+// Upsert adds or updates a peer in the registry. Returns true if it's a newly added peer.
+func (r *PeerRegistry) Upsert(peer Peer) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	key := peerKey(peer)
+	existing, exists := r.peers[key]
+	if !exists {
+		peer.LastSeen = time.Now()
+		r.peers[key] = peer
+		return true
+	}
+
+	// Update existing record
+	existing.LastSeen = time.Now()
+	existing.IP = peer.IP
+	existing.Port = peer.Port
+	existing.Hostname = peer.Hostname
+	existing.IsSelf = peer.IsSelf
+	r.peers[key] = existing
+	return false
+}
+
+// Prune removes peers that haven't been seen within ttl duration. Self is never pruned.
+// Returns true if any peer was removed.
+func (r *PeerRegistry) Prune(ttl time.Duration) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	now := time.Now()
+	changed := false
+
+	for key, peer := range r.peers {
+		if peer.IsSelf {
+			continue
+		}
+		if now.Sub(peer.LastSeen) > ttl {
+			delete(r.peers, key)
+			changed = true
+		}
+	}
+
+	return changed
+}
+
+// GetAll returns a copy of all registered peers sorted by Hostname.
+func (r *PeerRegistry) GetAll() []Peer {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	list := make([]Peer, 0, len(r.peers))
+	for _, p := range r.peers {
+		list = append(list, p)
+	}
+
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].IsSelf != list[j].IsSelf {
+			return list[i].IsSelf // Self always first
+		}
+		return list[i].Hostname < list[j].Hostname
+	})
+
+	return list
+}
+
+// GetRemotePeers returns all peers excluding self.
+func (r *PeerRegistry) GetRemotePeers() []Peer {
+	all := r.GetAll()
+	remotes := make([]Peer, 0, len(all))
+	for _, p := range all {
+		if !p.IsSelf {
+			remotes = append(remotes, p)
+		}
+	}
+	return remotes
+}
+
+// Get looks up a peer by ID or IP:Port key.
+func (r *PeerRegistry) Get(id string) (Peer, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	p, ok := r.peers[id]
+	if ok {
+		return p, true
+	}
+
+	// Fallback scan by peer ID field
+	for _, peer := range r.peers {
+		if peer.ID == id {
+			return peer, true
+		}
+	}
+
+	return Peer{}, false
+}
+
+// Count returns the total number of peers.
+func (r *PeerRegistry) Count() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.peers)
+}
+
+func peerKey(p Peer) string {
+	if p.ID != "" {
+		return p.ID
+	}
+	return fmt.Sprintf("%s:%d", p.IP, p.Port)
+}
+
+// DiscoveryService handles mDNS advertisement and periodic network scanning.
+type DiscoveryService struct {
+	self         Peer
+	registry     *PeerRegistry
+	mdnsServer   *mdns.Server
+	scanInterval time.Duration
+	peerTTL      time.Duration
+
+	ctx        context.Context
+	cancelFunc context.CancelFunc
+	wg         sync.WaitGroup
+
+	mu       sync.RWMutex
+	onUpdate func([]Peer)
+}
+
+// NewDiscoveryService creates a new discovery manager for this local instance.
+func NewDiscoveryService(self Peer, onUpdate func([]Peer)) *DiscoveryService {
+	if self.ID == "" {
+		self.ID = uuid.NewString()
+	}
+	self.IsSelf = true
+	self.LastSeen = time.Now()
+
+	registry := NewPeerRegistry()
+	registry.Upsert(self)
+
+	return &DiscoveryService{
+		self:         self,
+		registry:     registry,
+		scanInterval: DefaultScanTime,
+		peerTTL:      DefaultPeerTTL,
+		onUpdate:     onUpdate,
+	}
+}
+
+// Self returns the local node's Peer identity.
+func (d *DiscoveryService) Self() Peer {
+	return d.self
+}
+
+// Registry returns the underlying thread-safe registry.
+func (d *DiscoveryService) Registry() *PeerRegistry {
+	return d.registry
+}
+
+// SetUpdateCallback sets or updates the peer change notification callback.
+func (d *DiscoveryService) SetUpdateCallback(cb func([]Peer)) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.onUpdate = cb
+}
+
+func (d *DiscoveryService) notifyUpdate() {
+	d.mu.RLock()
+	cb := d.onUpdate
+	d.mu.RUnlock()
+
+	if cb != nil {
+		cb(d.registry.GetAll())
+	}
+}
+
+// Start registers mDNS service advertisement and begins the scanning loop.
+func (d *DiscoveryService) Start() error {
+	d.ctx, d.cancelFunc = context.WithCancel(context.Background())
+
+	// 1. Publish mDNS service
+	txtRecords := []string{
+		fmt.Sprintf("id=%s", d.self.ID),
+		fmt.Sprintf("hostname=%s", d.self.Hostname),
+	}
+
+	parsedIP := net.ParseIP(d.self.IP)
+	var ips []net.IP
+	if parsedIP != nil {
+		ips = append(ips, parsedIP)
+	}
+
+	instanceName := fmt.Sprintf("castpipe-%s", d.self.ID[:8])
+	service, err := mdns.NewMDNSService(
+		instanceName,
+		MdnsServiceType,
+		"",
+		d.self.Hostname+".",
+		d.self.Port,
+		ips,
+		txtRecords,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create mDNS service: %w", err)
+	}
+
+	server, err := mdns.NewServer(&mdns.Config{Zone: service})
+	if err != nil {
+		return fmt.Errorf("failed to start mDNS server: %w", err)
+	}
+	d.mdnsServer = server
+
+	// Initial notification with self
+	d.notifyUpdate()
+
+	// 2. Start periodic scanning loop
+	d.wg.Add(1)
+	go d.scanLoop()
+
+	return nil
+}
+
+// Stop shuts down mDNS advertising and scanning.
+func (d *DiscoveryService) Stop() {
+	if d.cancelFunc != nil {
+		d.cancelFunc()
+	}
+
+	if d.mdnsServer != nil {
+		_ = d.mdnsServer.Shutdown()
+	}
+
+	d.wg.Wait()
+}
+
+func (d *DiscoveryService) scanLoop() {
+	defer d.wg.Done()
+
+	// Execute initial scan immediately
+	d.performScan()
+
+	ticker := time.NewTicker(d.scanInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-d.ctx.Done():
+			return
+		case <-ticker.C:
+			d.performScan()
+		}
+	}
+}
+
+func (d *DiscoveryService) performScan() {
+	entriesCh := make(chan *mdns.ServiceEntry, 64)
+
+	params := mdns.DefaultParams(MdnsServiceType)
+	params.Domain = MdnsDomain
+	params.Timeout = 1500 * time.Millisecond
+	params.DisableIPv6 = true
+	params.Entries = entriesCh
+
+	var discoveredPeers []Peer
+	var collectWg sync.WaitGroup
+	collectWg.Add(1)
+
+	go func() {
+		defer collectWg.Done()
+		for entry := range entriesCh {
+			peer := parseServiceEntry(entry)
+			if peer.IP != "" && peer.Port > 0 {
+				discoveredPeers = append(discoveredPeers, peer)
+			}
+		}
+	}()
+
+	_ = mdns.QueryContext(d.ctx, params)
+	close(entriesCh)
+	collectWg.Wait()
+
+	changed := false
+
+	// Update discovered peers
+	for _, p := range discoveredPeers {
+		// Detect if this is self
+		if p.ID == d.self.ID || (p.IP == d.self.IP && p.Port == d.self.Port) {
+			p.IsSelf = true
+			p.ID = d.self.ID
+		}
+
+		if isNew := d.registry.Upsert(p); isNew {
+			changed = true
+		}
+	}
+
+	// Prune dead peers
+	if pruned := d.registry.Prune(d.peerTTL); pruned {
+		changed = true
+	}
+
+	if changed {
+		d.notifyUpdate()
+	}
+}
+
+// parseServiceEntry extracts structured Peer information from an mDNS service entry.
+func parseServiceEntry(entry *mdns.ServiceEntry) Peer {
+	var ip string
+	if entry.AddrV4 != nil {
+		ip = entry.AddrV4.String()
+	} else if entry.Addr != nil {
+		ip = entry.Addr.String()
+	}
+
+	hostname := strings.TrimSuffix(entry.Host, ".")
+	id := ""
+
+	// Parse TXT records
+	for _, field := range entry.InfoFields {
+		parts := strings.SplitN(field, "=", 2)
+		if len(parts) == 2 {
+			k := strings.ToLower(strings.TrimSpace(parts[0]))
+			v := strings.TrimSpace(parts[1])
+			switch k {
+			case "id":
+				id = v
+			case "hostname":
+				if v != "" {
+					hostname = v
+				}
+			}
+		}
+	}
+
+	if id == "" {
+		id = fmt.Sprintf("%s:%d", ip, entry.Port)
+	}
+	if hostname == "" {
+		hostname = ip
+	}
+
+	return Peer{
+		ID:       id,
+		Hostname: hostname,
+		IP:       ip,
+		Port:     entry.Port,
+		LastSeen: time.Now(),
+	}
+}

@@ -191,3 +191,46 @@ func TestServerEndpoints(t *testing.T) {
 func netJoinHostPort(host string, port int) string {
 	return fmt.Sprintf("%s:%d", host, port)
 }
+
+func TestNewServerWithConfig(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "castpipe_test_cfg_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// 1. Test custom hostname and download dir
+	cfg := ServerConfig{
+		DownloadDir: filepath.Join(tempDir, "CustomDrops"),
+		Hostname:    "Dev-Terminal-Alpha",
+		Port:        0, // ephemeral
+	}
+
+	srv, err := NewServerWithConfig(cfg)
+	if err != nil {
+		t.Fatalf("NewServerWithConfig failed: %v", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = srv.Stop(ctx)
+	}()
+
+	if srv.Hostname() != "Dev-Terminal-Alpha" {
+		t.Errorf("Expected hostname Dev-Terminal-Alpha, got %s", srv.Hostname())
+	}
+	if srv.DownloadDir() != filepath.Join(tempDir, "CustomDrops") {
+		t.Errorf("Expected download dir %s, got %s", filepath.Join(tempDir, "CustomDrops"), srv.DownloadDir())
+	}
+	if srv.Port() <= 0 {
+		t.Errorf("Expected positive ephemeral port, got %d", srv.Port())
+	}
+
+	// 2. Test specific port allocation
+	specificPort := srv.Port() // already bound
+	_, err = NewServerWithConfig(ServerConfig{Port: specificPort})
+	if err == nil {
+		t.Error("Expected error when binding already-in-use port")
+	}
+}
+

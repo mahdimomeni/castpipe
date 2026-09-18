@@ -12,9 +12,17 @@ import (
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+// AppConfig defines configurable parameters for local dev instances.
+type AppConfig struct {
+	Name        string
+	Port        int
+	DownloadDir string
+}
+
 // App struct manages application state, services, and exposed Wails bindings.
 type App struct {
 	ctx        context.Context
+	cfg        AppConfig
 	server     *backend.Server
 	discovery  *backend.DiscoveryService
 	self       backend.Peer
@@ -22,9 +30,16 @@ type App struct {
 	isReady    bool
 }
 
-// NewApp creates a new App application struct.
+// NewApp creates a new App application struct with default configuration.
 func NewApp() *App {
-	return &App{}
+	return NewAppWithConfig(AppConfig{})
+}
+
+// NewAppWithConfig creates a new App application struct with specified parameters.
+func NewAppWithConfig(cfg AppConfig) *App {
+	return &App{
+		cfg: cfg,
+	}
 }
 
 // startup is called when the app starts. The context is saved
@@ -32,8 +47,12 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
-	// 1. Initialize HTTP receiver server on ephemeral port :0
-	server, err := backend.NewServer("")
+	// 1. Initialize HTTP receiver server with instance configuration
+	server, err := backend.NewServerWithConfig(backend.ServerConfig{
+		DownloadDir: a.cfg.DownloadDir,
+		Port:        a.cfg.Port,
+		Hostname:    a.cfg.Name,
+	})
 	if err != nil {
 		wailsRuntime.LogErrorf(ctx, "Failed to initialize HTTP receiver: %v", err)
 		return

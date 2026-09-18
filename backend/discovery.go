@@ -145,13 +145,14 @@ func peerKey(p Peer) string {
 	return fmt.Sprintf("%s:%d", p.IP, p.Port)
 }
 
-// DiscoveryService handles mDNS advertisement and periodic network scanning.
+// DiscoveryService handles mDNS advertisement, local process discovery, and periodic scanning.
 type DiscoveryService struct {
-	self         Peer
-	registry     *PeerRegistry
-	mdnsServer   *mdns.Server
-	scanInterval time.Duration
-	peerTTL      time.Duration
+	self          Peer
+	registry      *PeerRegistry
+	mdnsServer    *mdns.Server
+	localProvider *LocalPeerProvider
+	scanInterval  time.Duration
+	peerTTL       time.Duration
 
 	ctx        context.Context
 	cancelFunc context.CancelFunc
@@ -172,13 +173,23 @@ func NewDiscoveryService(self Peer, onUpdate func([]Peer)) *DiscoveryService {
 	registry := NewPeerRegistry()
 	registry.Upsert(self)
 
+	localProvider := NewLocalPeerProvider(self, "")
+
 	return &DiscoveryService{
-		self:         self,
-		registry:     registry,
-		scanInterval: DefaultScanTime,
-		peerTTL:      DefaultPeerTTL,
-		onUpdate:     onUpdate,
+		self:          self,
+		registry:      registry,
+		localProvider: localProvider,
+		scanInterval:  2 * time.Second,
+		peerTTL:       DefaultPeerTTL,
+		onUpdate:      onUpdate,
 	}
+}
+
+// SetLocalPeersDir allows overriding the directory used for local inter-process discovery (e.g. in tests).
+func (d *DiscoveryService) SetLocalPeersDir(dir string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.localProvider = NewLocalPeerProvider(d.self, dir)
 }
 
 // Self returns the local node's Peer identity.
@@ -208,11 +219,18 @@ func (d *DiscoveryService) notifyUpdate() {
 	}
 }
 
-// Start registers mDNS service advertisement and begins the scanning loop.
+// Start registers local discovery and mDNS service advertisement, and begins the scanning loop.
 func (d *DiscoveryService) Start() error {
 	d.ctx, d.cancelFunc = context.WithCancel(context.Background())
 
-	// 1. Publish mDNS service
+	// 1. Publish presence in local inter-process peer registry
+	if d.localProvider != nil {
+		if err := d.localProvider.Publish(); err != nil {
+			fmt.Printf("[Discovery] Warning: local peer publish failed: %v\n", err)
+		}
+	}
+
+	// 2. Publish mDNS service for LAN subnet discovery
 	txtRecords := []string{
 		fmt.Sprintf("id=%s", d.self.ID),
 		fmt.Sprintf("hostname=%s", d.self.Hostname),
@@ -234,30 +252,35 @@ func (d *DiscoveryService) Start() error {
 		ips,
 		txtRecords,
 	)
-	if err != nil {
-		return fmt.Errorf("failed to create mDNS service: %w", err)
+	if err == nil {
+		server, err := mdns.NewServer(&mdns.Config{Zone: service})
+		if err == nil {
+			d.mdnsServer = server
+		} else {
+			fmt.Printf("[Discovery] Warning: failed to start mDNS server: %v\n", err)
+		}
+	} else {
+		fmt.Printf("[Discovery] Warning: failed to create mDNS service: %v\n", err)
 	}
-
-	server, err := mdns.NewServer(&mdns.Config{Zone: service})
-	if err != nil {
-		return fmt.Errorf("failed to start mDNS server: %w", err)
-	}
-	d.mdnsServer = server
 
 	// Initial notification with self
 	d.notifyUpdate()
 
-	// 2. Start periodic scanning loop
+	// 3. Start periodic scanning loop
 	d.wg.Add(1)
 	go d.scanLoop()
 
 	return nil
 }
 
-// Stop shuts down mDNS advertising and scanning.
+// Stop shuts down local presence advertising, mDNS, and background scanning.
 func (d *DiscoveryService) Stop() {
 	if d.cancelFunc != nil {
 		d.cancelFunc()
+	}
+
+	if d.localProvider != nil {
+		d.localProvider.Stop()
 	}
 
 	if d.mdnsServer != nil {
@@ -287,38 +310,51 @@ func (d *DiscoveryService) scanLoop() {
 }
 
 func (d *DiscoveryService) performScan() {
-	entriesCh := make(chan *mdns.ServiceEntry, 64)
-
-	params := mdns.DefaultParams(MdnsServiceType)
-	params.Domain = MdnsDomain
-	params.Timeout = 1500 * time.Millisecond
-	params.DisableIPv6 = true
-	params.Entries = entriesCh
-
 	var discoveredPeers []Peer
-	var collectWg sync.WaitGroup
-	collectWg.Add(1)
 
-	go func() {
-		defer collectWg.Done()
-		for entry := range entriesCh {
-			peer := parseServiceEntry(entry)
-			if peer.IP != "" && peer.Port > 0 {
-				discoveredPeers = append(discoveredPeers, peer)
+	// 1. Scan mDNS if server active
+	if d.mdnsServer != nil {
+		entriesCh := make(chan *mdns.ServiceEntry, 64)
+
+		params := mdns.DefaultParams(MdnsServiceType)
+		params.Domain = MdnsDomain
+		params.Timeout = 1200 * time.Millisecond
+		params.DisableIPv6 = true
+		params.Entries = entriesCh
+
+		var collectWg sync.WaitGroup
+		collectWg.Add(1)
+
+		go func() {
+			defer collectWg.Done()
+			for entry := range entriesCh {
+				peer := parseServiceEntry(entry)
+				if peer.IP != "" && peer.Port > 0 {
+					discoveredPeers = append(discoveredPeers, peer)
+				}
 			}
-		}
-	}()
+		}()
 
-	_ = mdns.QueryContext(d.ctx, params)
-	close(entriesCh)
-	collectWg.Wait()
+		_ = mdns.QueryContext(d.ctx, params)
+		close(entriesCh)
+		collectWg.Wait()
+	}
+
+	// 2. Scan and heartbeat local inter-process provider
+	if d.localProvider != nil {
+		_ = d.localProvider.Heartbeat()
+		localPeers, err := d.localProvider.Scan(d.peerTTL)
+		if err == nil && len(localPeers) > 0 {
+			discoveredPeers = append(discoveredPeers, localPeers...)
+		}
+	}
 
 	changed := false
 
-	// Update discovered peers
+	// 3. Update discovered peers
 	for _, p := range discoveredPeers {
 		// Detect if this is self
-		if p.ID == d.self.ID || (p.IP == d.self.IP && p.Port == d.self.Port) {
+		if p.ID == d.self.ID || (p.Port == d.self.Port && (p.IP == "127.0.0.1" || p.IP == d.self.IP)) {
 			p.IsSelf = true
 			p.ID = d.self.ID
 		}
@@ -328,7 +364,7 @@ func (d *DiscoveryService) performScan() {
 		}
 	}
 
-	// Prune dead peers
+	// 4. Prune dead peers
 	if pruned := d.registry.Prune(d.peerTTL); pruned {
 		changed = true
 	}

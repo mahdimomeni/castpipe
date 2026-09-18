@@ -29,11 +29,30 @@ type Server struct {
 	dropCallback func(item DropItem)
 }
 
+// ServerConfig holds configuration options for the HTTP receiver.
+type ServerConfig struct {
+	DownloadDir string
+	Port        int
+	Hostname    string
+}
+
 // NewServer initializes an HTTP receiver bound to an ephemeral port (:0).
 func NewServer(customDownloadDir string) (*Server, error) {
-	ln, err := net.Listen("tcp", ":0")
+	return NewServerWithConfig(ServerConfig{
+		DownloadDir: customDownloadDir,
+	})
+}
+
+// NewServerWithConfig initializes an HTTP receiver with customizable options.
+func NewServerWithConfig(cfg ServerConfig) (*Server, error) {
+	bindAddr := ":0"
+	if cfg.Port > 0 {
+		bindAddr = fmt.Sprintf(":%d", cfg.Port)
+	}
+
+	ln, err := net.Listen("tcp", bindAddr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to bind ephemeral port: %w", err)
+		return nil, fmt.Errorf("failed to bind port %s: %w", bindAddr, err)
 	}
 
 	tcpAddr, ok := ln.Addr().(*net.TCPAddr)
@@ -43,20 +62,30 @@ func NewServer(customDownloadDir string) (*Server, error) {
 	}
 	port := tcpAddr.Port
 
-	hostname, err := os.Hostname()
-	if err != nil || hostname == "" {
-		hostname = "localhost"
+	hostname := strings.TrimSpace(cfg.Hostname)
+	if hostname == "" {
+		h, err := os.Hostname()
+		if err != nil || h == "" {
+			hostname = "localhost"
+		} else {
+			hostname = h
+		}
 	}
 
 	ip := DetectLocalIP()
 
-	downloadDir := customDownloadDir
+	downloadDir := strings.TrimSpace(cfg.DownloadDir)
 	if downloadDir == "" {
 		homeDir, err := os.UserHomeDir()
+		folderName := "DevDrop"
+		// If custom hostname provided, isolate download directory by default
+		if strings.TrimSpace(cfg.Hostname) != "" {
+			folderName = fmt.Sprintf("DevDrop-%s", strings.TrimSpace(cfg.Hostname))
+		}
 		if err != nil {
-			downloadDir = filepath.Join(".", "Downloads", "DevDrop")
+			downloadDir = filepath.Join(".", "Downloads", folderName)
 		} else {
-			downloadDir = filepath.Join(homeDir, "Downloads", "DevDrop")
+			downloadDir = filepath.Join(homeDir, "Downloads", folderName)
 		}
 	}
 	downloadDir = filepath.Clean(downloadDir)
